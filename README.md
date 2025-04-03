@@ -1,1 +1,1 @@
-Download reviews from Amazon, Etsy and Yelp as a csv file.
+Download reviews from Amazon, Etsy, Google and Yelp as a csv file.
