@@ -6,12 +6,36 @@ document.addEventListener('DOMContentLoaded', function() {
   // Check if we're on a supported site
   chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
     const currentUrl = tabs[0].url;
-    const supportedSites = ['amazon.com', 'yelp.com', 'etsy.com'];
-    const isSupportedSite = supportedSites.some(site => currentUrl.includes(site));
+
+    // Basic sites
+    const basicSites = ['amazon.com', 'yelp.com', 'etsy.com'];
+
+    // Google domains
+    const googleDomains = [
+      'google.com',
+      'google.co.uk',
+      'google.co.in',
+      'google.ca',
+      'google.com.au',
+      'google.de',
+      'google.fr',
+      'google.co.jp',
+      'google.es',
+      'google.it',
+      'google.nl',
+      'google.com.br',
+      'google.com.mx',
+      'google.ru'
+    ];
+
+    // Check if we're on a supported site
+    const isBasicSite = basicSites.some(site => currentUrl.includes(site));
+    const isGoogleSite = googleDomains.some(domain => currentUrl.includes(domain));
+    const isSupportedSite = isBasicSite || isGoogleSite;
 
     if (!isSupportedSite) {
       downloadBtn.disabled = true;
-      statusDiv.textContent = 'Please navigate to Amazon, Yelp, or Etsy to use this extension.';
+      statusDiv.textContent = 'Please navigate to Amazon, Yelp, Etsy, or Google Maps/Business to use this extension.';
       statusDiv.className = 'status error';
     }
   });

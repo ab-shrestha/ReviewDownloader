@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Review Downloader",
-  "description": "Download product reviews from Amazon, Yelp, and Etsy as CSV",
+  "description": "Download product reviews from Amazon, Yelp, Etsy, and Google as CSV",
   "version": "1.0",
   "action": {
     "default_popup": "popup.html",
@@ -21,7 +21,21 @@
       "matches": [
         "*://*.amazon.com/*",
         "*://*.yelp.com/*",
-        "*://*.etsy.com/*"
+        "*://*.etsy.com/*",
+        "*://*.google.com/*",
+        "*://*.google.co.uk/*",
+        "*://*.google.co.in/*",
+        "*://*.google.ca/*",
+        "*://*.google.com.au/*",
+        "*://*.google.de/*",
+        "*://*.google.fr/*",
+        "*://*.google.co.jp/*",
+        "*://*.google.es/*",
+        "*://*.google.it/*",
+        "*://*.google.nl/*",
+        "*://*.google.com.br/*",
+        "*://*.google.com.mx/*",
+        "*://*.google.ru/*"
       ],
       "js": ["content.js"]
     }
