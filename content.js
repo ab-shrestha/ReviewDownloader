@@ -1043,19 +1043,12 @@ function scrapeEtsyReviews(sendResponse) {
           }
         }
 
-        // Check if there are photos in the review
-        const hasPhotos = !!reviewElement.querySelector('.wt-grid__item-xs-12 img, .review-image');
-
-        // Check if there's a seller response
-        const hasSellerResponse = !!reviewElement.querySelector('.wt-content-toggle__body .wt-display-flex-xs, .shop2-review-seller-response');
-
+      
         reviews.push({
           reviewerName,
           reviewDate,
           starRating,
           reviewText,
-          hasPhotos,
-          hasSellerResponse
         });
       } catch (reviewError) {
         console.warn('Error processing individual Etsy review:', reviewError);
