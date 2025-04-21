@@ -218,192 +218,94 @@ function extractDateFromText(dateText) {
 }
 // End of date extraction helper
 
-/**
- * Scrapes Yelp reviews from the current page
- * @param {function} sendResponse - Callback function to send results back to popup
- */
+
 function scrapeYelpReviews(sendResponse) {
   try {
-    console.log('Starting Yelp review scraping with emergency mode...');
-
-    // Dump the entire DOM structure for debugging
-    console.log('Page title:', document.title);
-    console.log('URL:', window.location.href);
-
-    // Create a fallback review if all else fails
-    let fallbackReviews = [];
-
-    // APPROACH 1: Try to find reviews in the most common containers
-    console.log('APPROACH 1: Looking for reviews in common containers');
-    let reviewContainers = document.querySelectorAll('section, [role="region"], [data-testid*="review"], [id*="review"]');
-    console.log(`Found ${reviewContainers.length} potential review containers`);
-
-    // APPROACH 2: Look for any elements with star ratings
-    console.log('APPROACH 2: Looking for elements with star ratings');
-    const starElements = document.querySelectorAll('[aria-label*="star"], [class*="star"], [class*="Star"]');
-    console.log(`Found ${starElements.length} elements with star ratings`);
-
-    // For each star element, walk up the DOM to find potential review containers
-    starElements.forEach((starEl, i) => {
-      // Walk up to 5 levels up to find a container
-      let currentEl = starEl;
-      for (let j = 0; j < 5; j++) {
-        currentEl = currentEl.parentElement;
-        if (!currentEl) break;
-
-        // If this element has substantial text, it might be a review
-        if (currentEl.innerText && currentEl.innerText.length > 100) {
-          console.log(`Star element ${i} has a parent with substantial text at level ${j+1}`);
-
-          // Create a fallback review from this element
-          const reviewText = currentEl.innerText.trim();
-          let starRating = null;
-
-          // Try to extract star rating from aria-label
-          if (starEl.hasAttribute('aria-label')) {
-            const ariaLabel = starEl.getAttribute('aria-label');
-            const ratingMatch = ariaLabel.match(/(\d+(\.\d+)?)\s*stars?/i);
-            if (ratingMatch) {
-              starRating = parseFloat(ratingMatch[1]);
-            }
-          }
-
-          // If we couldn't get a rating from aria-label, try a default
-          if (!starRating) starRating = 4; // Default to 4 stars if we can't determine
-
-          // Add to fallback reviews
-          fallbackReviews.push({
-            reviewerName: `Yelp User ${i+1}`,
-            reviewDate: 'Recent',
-            starRating: starRating,
-            reviewText: reviewText.substring(0, 500) // Limit text length
-          });
-
-          break;
-        }
-      }
-    });
-
-    console.log(`Created ${fallbackReviews.length} fallback reviews from star elements`);
-
-    // APPROACH 3: Look for any elements that might be reviews based on content
-    console.log('APPROACH 3: Scanning page for review-like content');
-    const allElements = document.querySelectorAll('div, li, article, section');
-    console.log(`Scanning ${allElements.length} elements for review-like content`);
-
-    // Process the reviews we found using our original approach
+    console.log('Starting Yelp review scraping...');
     const reviews = [];
 
-    // Try to find the business name for better context
-    const businessName = findBusinessName();
+    // Target the actual review container elements
+    // The provided HTML shows reviews are in li.y-css-1sqelp2 elements within ul.list__09f24__ynIEd
+    const reviewElements = document.querySelectorAll('ul.list__09f24__ynIEd > li.y-css-1sqelp2');
+    console.log(`Found ${reviewElements.length} review elements`);
+
+    if (reviewElements.length === 0) {
+      // Fallback to more general selectors if specific ones fail
+      const fallbackElements = document.querySelectorAll('[class*="review"] > [class*="comment"], [class*="review-content"]');
+      console.log(`Found ${fallbackElements.length} fallback elements`);
+      
+      if (fallbackElements.length === 0) {
+        sendResponse({
+          success: false,
+          error: 'Could not find any reviews on this page. Please make sure you are on a Yelp business page with reviews.'
+        });
+        return;
+      }
+    }
+
+    // Find business name
+    const businessName = extractBusinessName();
     console.log(`Detected business name: ${businessName}`);
 
-    // First try with specific selectors
-    let allReviewElements = document.querySelectorAll('[data-review-id], [class*="review"], [class*="Review"]');
-    console.log(`Found ${allReviewElements.length} potential review elements using specific selectors`);
-
-    // If we didn't find any, try with more general selectors
-    if (allReviewElements.length === 0) {
-      allReviewElements = document.querySelectorAll('[aria-label*="star"], [class*="stars"], [class*="Stars"]');
-      console.log(`Found ${allReviewElements.length} elements with star ratings`);
-    }
-
-    // If we still didn't find any, try with even more general selectors
-    if (allReviewElements.length === 0) {
-      const mainContent = document.querySelector('main') || document.body;
-      allReviewElements = mainContent.querySelectorAll('li, article, div.border-bottom');
-      console.log(`Found ${allReviewElements.length} list items or articles that might be reviews`);
-    }
-
-    // Process each potential review element
-    allReviewElements.forEach((element, index) => {
+    // Process each review element
+    reviewElements.forEach((element, index) => {
       try {
-        // Check if this element looks like a review
-        const hasStarRating = hasStarRatingElement(element);
-        const hasReviewText = hasTextContent(element, 50); // Lower the threshold to 50 chars
-
-        // Log what we found
-        console.log(`Element ${index}: hasStarRating=${hasStarRating}, hasReviewText=${hasReviewText}, text length=${element.innerText.length}`);
-
-        // Be more lenient - only require either a star rating or substantial text
-        if (!hasStarRating && !hasReviewText) {
-          console.log(`Skipping element ${index} - neither star rating nor substantial text`);
-          return;
+        // Reviewer name - look for the bold name link in the user passport area
+        let reviewerName = 'Unknown';
+        const nameElement = element.querySelector('[data-font-weight="bold"] > a.y-css-1x1e1r2');
+        if (nameElement) {
+          reviewerName = nameElement.innerText.trim();
         }
 
-        // Extract the review data
-        const reviewData = extractReviewData(element, index);
-
-        // Be more lenient with validation - accept reviews with either a name or a rating
-        if (reviewData && (reviewData.reviewerName !== 'Unknown' || reviewData.starRating !== null)) {
-          // If we're missing a reviewer name, generate one
-          if (reviewData.reviewerName === 'Unknown') {
-            reviewData.reviewerName = `Yelp User ${index + 1}`;
+        // Star rating - look for the rating div with aria-label containing "star rating"
+        let starRating = null;
+        const ratingElement = element.querySelector('div[aria-label*="star rating"]');
+        if (ratingElement) {
+          const ariaLabel = ratingElement.getAttribute('aria-label');
+          const ratingMatch = ariaLabel.match(/(\d+)\s*star/i);
+          if (ratingMatch) {
+            starRating = parseInt(ratingMatch[1], 10);
           }
+        }
 
-          // If we're missing a star rating, use a default
-          if (reviewData.starRating === null) {
-            reviewData.starRating = 4; // Default to 4 stars
-          }
+        // Review date
+        let reviewDate = 'Unknown';
+        const dateElement = element.querySelector('.y-css-1vi7y4e');
+        if (dateElement) {
+          reviewDate = dateElement.innerText.trim();
+        }
 
-          reviews.push(reviewData);
-          console.log(`Successfully processed review ${index} by ${reviewData.reviewerName}`);
-        } else {
-          console.log(`Skipping element ${index} - couldn't extract valid data`);
+        // Review text
+        let reviewText = 'No review text';
+        const textElement = element.querySelector('.comment__09f24__D0cxf, p.y-css-1541nhh');
+        if (textElement) {
+          reviewText = textElement.innerText.trim();
+        }
+
+        // Only add if we have valid data
+        if (reviewerName !== 'Unknown' || starRating !== null || reviewText !== 'No review text') {
+          reviews.push({
+            reviewerName,
+            reviewDate,
+            starRating,
+            reviewText
+          });
+          console.log(`Successfully processed review ${index} by ${reviewerName}`);
         }
       } catch (reviewError) {
-        console.warn(`Error processing potential Yelp review ${index}:`, reviewError);
+        console.warn(`Error processing Yelp review ${index}:`, reviewError);
       }
     });
 
-    // If we didn't find any reviews with our main approach, use the fallbacks
-    if (reviews.length === 0 && fallbackReviews.length > 0) {
-      console.log(`Using ${fallbackReviews.length} fallback reviews`);
-      fallbackReviews.forEach(review => reviews.push(review));
-    }
-
-    // If we still don't have any reviews, create some from page content as a last resort
     if (reviews.length === 0) {
-      console.log('Creating emergency reviews from page content');
-
-      // Get all paragraphs with substantial text
-      const paragraphs = [];
-      document.querySelectorAll('p').forEach(p => {
-        const text = p.innerText.trim();
-        if (text.length > 50) {
-          paragraphs.push(text);
-        }
-      });
-
-      // Use the top 3 longest paragraphs as emergency reviews
-      if (paragraphs.length > 0) {
-        paragraphs.sort((a, b) => b.length - a.length);
-        const topParagraphs = paragraphs.slice(0, Math.min(3, paragraphs.length));
-
-        topParagraphs.forEach((text, i) => {
-          reviews.push({
-            reviewerName: `Customer ${i+1}`,
-            reviewDate: 'Recent',
-            starRating: 4 + (i * 0.5) % 1, // Vary ratings slightly
-            reviewText: text
-          });
-        });
-
-        console.log(`Created ${reviews.length} emergency reviews from page paragraphs`);
-      }
-    }
-
-    if (reviews.length === 0) {
-      console.warn('No reviews could be extracted by any method');
       sendResponse({
         success: false,
-        error: 'Could not extract any reviews. Please try on a different Yelp page or contact support.'
+        error: 'Could not extract any reviews. Please try on a different Yelp page.'
       });
       return;
     }
 
     console.log(`Successfully extracted ${reviews.length} reviews for ${businessName}`);
-
     sendResponse({
       success: true,
       reviews,
@@ -416,190 +318,17 @@ function scrapeYelpReviews(sendResponse) {
     sendResponse({ success: false, error: error.message });
   }
 
-  // Helper function to find the business name
-  function findBusinessName() {
+  // Helper function to extract business name
+  function extractBusinessName() {
     // Try multiple approaches to find the business name
-    const selectors = [
-      'h1[data-testid="business-title"]',
-      'h1.css-1se8maq',
-      'h1[class*="businessName"]',
-      'h1[class*="BusinessName"]',
-      '.biz-page-title',
-      '[data-testid="business-title"]',
-      'h1' // Any h1 as a last resort
-    ];
-
-    for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      for (const element of elements) {
-        if (element && element.innerText.trim()) {
-          return element.innerText.trim();
-        }
-      }
+    const businessElement = document.querySelector('h1[class*="businessName"], .biz-page-title, [data-testid="business-title"]');
+    if (businessElement) {
+      return businessElement.innerText.trim();
     }
-
-    // If all else fails, try to get it from the title
+    
+    // If all else fails, use the page title
     const titleMatch = document.title.match(/^([^-|]+)/);
     return titleMatch ? titleMatch[1].trim() : 'Yelp Business';
-  }
-
-  // Helper function to check if an element has a star rating
-  function hasStarRatingElement(element) {
-    // Look for elements with star rating in aria-label or other attributes
-    return !!(
-      element.querySelector('[aria-label*="star"], [class*="stars"], [class*="Stars"], [class*="rating"], [class*="Rating"]') ||
-      element.innerText.match(/\d(\.\d)?\s*stars?/i) ||
-      element.innerText.match(/rated\s+\d/i)
-    );
-  }
-
-  // Helper function to check if an element has substantial text content
-  function hasTextContent(element, minLength = 50) {
-    const text = element.innerText.trim();
-    return text.length > minLength;
-  }
-
-  // Helper function to extract review data from an element
-  function extractReviewData(element, index) {
-    // Extract reviewer name - try multiple approaches
-    let reviewerName = 'Unknown';
-
-    // First try to find links that might be user profiles
-    const userLinks = element.querySelectorAll('a[href*="/user_details"], a[href*="/user"], a[class*="user"], a[class*="User"]');
-    for (const link of userLinks) {
-      const text = link.innerText.trim();
-      if (text && text.length > 2 && text.length < 40) {
-        reviewerName = text;
-        break;
-      }
-    }
-
-    // If we didn't find a name in links, try other elements
-    if (reviewerName === 'Unknown') {
-      const userElements = element.querySelectorAll('[class*="user"], [class*="User"], [class*="profile"], [class*="Profile"], [class*="author"], [class*="Author"]');
-      for (const userEl of userElements) {
-        const text = userEl.innerText.trim();
-        if (text && text.length > 2 && text.length < 40 && !text.includes('http')) {
-          reviewerName = text;
-          break;
-        }
-      }
-    }
-
-    // Extract star rating - try multiple approaches
-    let starRating = null;
-
-    // First try elements with aria-label containing "star"
-    const ratingElements = element.querySelectorAll('[aria-label*="star"], [aria-label*="Star"]');
-    for (const ratingEl of ratingElements) {
-      const ariaLabel = ratingEl.getAttribute('aria-label');
-      const ratingMatch = ariaLabel.match(/(\d+(\.\d+)?)\s*stars?/i);
-      if (ratingMatch) {
-        starRating = parseFloat(ratingMatch[1]);
-        break;
-      }
-    }
-
-    // If we didn't find a rating, try other approaches
-    if (starRating === null) {
-      // Try elements with star-related classes
-      const starClassElements = element.querySelectorAll('[class*="stars"], [class*="Stars"], [class*="rating"], [class*="Rating"]');
-      for (const starEl of starClassElements) {
-        // Try data attributes
-        for (const attr of ['data-stars', 'data-rating', 'value']) {
-          if (starEl.hasAttribute(attr)) {
-            const value = starEl.getAttribute(attr);
-            const parsed = parseFloat(value);
-            if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-              starRating = parsed;
-              break;
-            }
-          }
-        }
-
-        // If we still don't have a rating, try to parse it from the class name
-        if (starRating === null) {
-          const classNames = starEl.className.split(' ');
-          for (const className of classNames) {
-            if (className.includes('star')) {
-              const ratingMatch = className.match(/star[s-]?(\d+)/i);
-              if (ratingMatch) {
-                starRating = parseInt(ratingMatch[1]) / 10; // Often stored as 50 for 5.0 stars
-                break;
-              }
-            }
-          }
-        }
-
-        if (starRating !== null) break;
-      }
-    }
-
-    // If we still don't have a rating, try to find it in the text
-    if (starRating === null) {
-      const ratingMatch = element.innerText.match(/(\d+(\.\d+)?)\s*stars?/i);
-      if (ratingMatch) {
-        starRating = parseFloat(ratingMatch[1]);
-      }
-    }
-
-    // Extract review date
-    let reviewDate = 'Unknown';
-
-    // Look for date patterns in the text
-    const allText = element.innerText;
-    const datePatterns = [
-      /(\d{1,2}\/\d{1,2}\/\d{2,4})/,                     // MM/DD/YYYY
-      /(\w+\s+\d{1,2},\s+\d{4})/,                        // Month DD, YYYY
-      /(\d{1,2}\s+\w+\s+\d{4})/,                         // DD Month YYYY
-      /(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/                // DD-MM-YYYY or DD/MM/YYYY
-    ];
-
-    for (const pattern of datePatterns) {
-      const match = allText.match(pattern);
-      if (match) {
-        reviewDate = match[1];
-        break;
-      }
-    }
-
-    // Extract review text - look for the longest paragraph
-    let reviewText = 'No review text';
-    const paragraphs = [];
-
-    // Get all text nodes that might be review content
-    const textElements = element.querySelectorAll('p, [class*="comment"], [class*="Comment"], [class*="text"], [class*="Text"], span[lang="en"]');
-
-    textElements.forEach(el => {
-      const text = el.innerText.trim();
-      if (text.length > 20) { // Minimum length for a review paragraph
-        paragraphs.push(text);
-      }
-    });
-
-    // Use the longest paragraph as the review text
-    if (paragraphs.length > 0) {
-      paragraphs.sort((a, b) => b.length - a.length);
-      reviewText = paragraphs[0];
-    } else if (element.innerText.length > 50) {
-      // If we couldn't find paragraphs, use the element's text directly
-      reviewText = element.innerText.trim().substring(0, 1000); // Limit length
-    }
-
-    // Check for additional features
-    const hasPhotos = !!element.querySelector('[aria-label*="photo"], img:not([alt="user profile image"]), [class*="photo"], [class*="Photo"]');
-    const hasCheckIn = !!element.querySelector('[class*="check-in"], [class*="CheckIn"]');
-    const isElite = element.innerText.includes('Elite') || !!element.querySelector('[class*="elite"], [class*="Elite"]');
-
-    return {
-      reviewerName,
-      reviewDate,
-      starRating,
-      reviewText,
-      hasPhotos,
-      hasCheckIn,
-      isElite
-    };
   }
 }
 // End of Yelp review scraper
