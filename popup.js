@@ -74,4 +74,23 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   });
+    // Add pagination controls to the UI
+    const container = document.querySelector('.container');
+    const paginationControls = document.createElement('div');
+    paginationControls.className = 'pagination-controls';
+    paginationControls.style.cssText = 'display: flex; justify-content: space-between; margin-top: 15px;';
+    paginationControls.innerHTML = `
+      <button id="prevPage" disabled>Previous Page</button>
+      <span id="pageInfo">Page 1</span>
+      <button id="nextPage">Next Page</button>
+    `;
+    container.appendChild(paginationControls);
+  
+    // Add pagination button handlers
+    document.getElementById('prevPage').addEventListener('click', function() {
+      // Code for previous page navigation
+    });
+    document.getElementById('nextPage').addEventListener('click', function() {
+      // Code for next page navigation
+    });
 });

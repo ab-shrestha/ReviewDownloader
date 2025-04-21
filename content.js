@@ -24,14 +24,20 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         sendResponse({success: false, error: 'Unsupported website'});
       }
     } catch (error) {
-      sendResponse({success: false, error: error.message});
+      console.error("Error in message listener:", error);
+      sendResponse({success: false, error: error.message || "An unknown error occurred"});
     }
     
     // Keep the messaging channel open for async response
     return true;
   } else if (request.action === "downloadAsCSV") {
-    const downloadResponse = downloadAsCSV(request.reviews, request.siteName);
-    sendResponse(downloadResponse);
+    try {
+      const downloadResponse = downloadAsCSV(request.reviews, request.siteName);
+      sendResponse(downloadResponse);
+    } catch (error) {
+      console.error("Error in downloadAsCSV:", error);
+      sendResponse({success: false, error: error.message || "Error creating CSV"});
+    }
     return true; // Keep the messaging channel open for async response
   }
 });
@@ -57,39 +63,90 @@ function scrapeAmazonReviews(sendResponse) {
 
     reviewElements.forEach((reviewElement) => {
       try {
-        // Extract reviewer name
-        const reviewerName = reviewElement.querySelector('.a-profile-name')?.innerText.trim() || 'Unknown';
+        // Extract reviewer name with null checks
+        let reviewerName = 'Unknown';
+        const nameElement = reviewElement.querySelector('.a-profile-name');
+        if (nameElement && nameElement.innerText) {
+          reviewerName = nameElement.innerText.trim();
+        }
 
-        // Extract review date
-        const reviewDateText = reviewElement.querySelector('[data-hook="review-date"]')?.innerText.trim() || 'Unknown';
-        const reviewDate = extractDateFromText(reviewDateText);
+        // Extract review date with null checks
+        let reviewDate = 'Unknown';
+        const reviewDateElement = reviewElement.querySelector('[data-hook="review-date"]');
+        if (reviewDateElement && reviewDateElement.innerText) {
+          const reviewDateText = reviewDateElement.innerText.trim();
+          reviewDate = extractDateFromText(reviewDateText);
+        }
 
-        // Extract star rating
-        const starRatingText = reviewElement.querySelector('[data-hook="review-star-rating"] .a-icon-alt')?.innerText.trim();
-        const starRating = starRatingText ? parseFloat(starRatingText.split(' ')[0]) : null;
+        // Extract star rating with null checks
+        let starRating = null;
+        const starRatingElement = reviewElement.querySelector('[data-hook="review-star-rating"] .a-icon-alt');
+        if (starRatingElement && starRatingElement.innerText) {
+          const starRatingText = starRatingElement.innerText.trim();
+          if (starRatingText) {
+            const ratingMatch = starRatingText.match(/^([\d.]+)/);
+            starRating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+          }
+        }
 
-        // Extract review text
-        const reviewText = reviewElement.querySelector('[data-hook="review-body"] span')?.innerText.trim() || 'No review text';
+        // Extract review text with null checks
+        let reviewText = 'No review text';
+        const reviewTextElement = reviewElement.querySelector('[data-hook="review-body"] span');
+        if (reviewTextElement && reviewTextElement.innerText) {
+          reviewText = reviewTextElement.innerText.trim();
+        }
 
-        // Extract verified purchase status if available
+        // Extract verified purchase with multiple approaches
+        let isVerified = false;
+        
+        // Approach 1: Traditional data-hook attribute (original method)
+        const verifiedElement = reviewElement.querySelector('[data-hook="avp-badge"]');
+        if (verifiedElement) {
+          isVerified = true;
+        }
+        
+        // Approach 2: Look for text containing "Verified Purchase"
         if (!isVerified) {
           const verifiedTextElements = reviewElement.querySelectorAll('span, div, a');
           for (const element of verifiedTextElements) {
-            if (element.innerText && element.innerText.trim().includes('Verified')) {
+            if (element && element.innerText && element.innerText.trim().includes('Verified Purchase')) {
               isVerified = true;
               break;
             }
           }
         }
+        
+        // Approach 3: Check for verified purchase icon/badge classes
+        if (!isVerified) {
+          const verifiedBadge = reviewElement.querySelector('.a-size-mini.a-color-state');
+          if (verifiedBadge && verifiedBadge.innerText.trim().includes('Verified')) {
+            isVerified = true;
+          }
+        }
+        
+        // Approach 4: Check for the newer data-hook attributes Amazon might use
+        if (!isVerified) {
+          const newVerifiedElements = [
+            reviewElement.querySelector('[data-hook="purchase-verified-badge"]'),
+            reviewElement.querySelector('[data-hook="verified-purchase-badge"]')
+          ];
+          
+          if (newVerifiedElements.some(el => el !== null)) {
+            isVerified = true;
+          }
+        }
 
-        // Add the extracted data to the reviews array
-        reviews.push({
-          reviewerName,
-          reviewDate,
-          starRating,
-          reviewText,
-          isVerified
-        });
+        // Validate all fields before adding to reviews array
+        // Only add reviews that have at least a rating or review text
+        if (starRating !== null || reviewText !== 'No review text') {
+          reviews.push({
+            reviewerName: reviewerName || 'Unknown',
+            reviewDate: reviewDate || 'Unknown',
+            starRating: starRating,
+            reviewText: reviewText || 'No review text',
+            isVerified: isVerified
+          });
+        }
       } catch (reviewError) {
         console.warn('Error processing individual review:', reviewError);
         // Continue with other reviews even if one fails
@@ -106,6 +163,15 @@ function scrapeAmazonReviews(sendResponse) {
         currentPage: parseInt(currentPage, 10),
         hasMorePages: !!paginationElement.querySelector('.a-last:not(.a-disabled)')
       };
+    }
+
+    // Check if we found any valid reviews
+    if (reviews.length === 0) {
+      sendResponse({
+        success: false,
+        error: 'Could not extract any valid reviews. Please try a different page.'
+      });
+      return;
     }
 
     // Send the extracted reviews back to the popup
@@ -1035,7 +1101,15 @@ function downloadAsCSV(reviews, siteName) {
     let csv = headers.join(',') + '\n';
 
     // Add each review as a row
-    reviews.forEach(review => {
+    reviews.forEach((review, index) => {
+      // Update progress periodically
+      if (index % progressUpdate === 0) {
+        chrome.runtime.sendMessage({ 
+          action: 'updateProgress', 
+          progress: Math.floor((index / reviews.length) * 100) 
+        });
+      }
+      
       const row = headers.map(header => {
         // Escape quotes and format cell correctly for CSV
         let cell = review[header] === null ? '' : review[header].toString();
@@ -1056,8 +1130,18 @@ function downloadAsCSV(reviews, siteName) {
       csv += row.join(',') + '\n';
     });
 
+    // Send complete progress
+    chrome.runtime.sendMessage({ action: 'updateProgress', progress: 100 });
+
     // Use UTF-8 BOM to ensure Excel and other applications recognize the encoding
     const BOM = "\uFEFF";
+
+    // Send initial progress message
+    chrome.runtime.sendMessage({ action: 'updateProgress', progress: 0 });
+
+    // Calculate update frequency based on review count
+    const progressUpdate = Math.max(1, Math.floor(reviews.length / 10));
+    
     const csvWithBOM = BOM + csv;
 
     // Create a Blob with UTF-8 encoding specified
