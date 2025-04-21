@@ -70,6 +70,13 @@ function scrapeAmazonReviews(sendResponse) {
           reviewerName = nameElement.innerText.trim();
         }
 
+        // Extract review title/heading with null checks
+        let reviewTitle = 'No title';
+        const titleElement = reviewElement.querySelector('[data-hook="review-title"] span');
+        if (titleElement && titleElement.innerText) {
+          reviewTitle = titleElement.innerText.trim();
+        }
+
         // Extract review date with null checks
         let reviewDate = 'Unknown';
         const reviewDateElement = reviewElement.querySelector('[data-hook="review-date"]');
@@ -141,6 +148,7 @@ function scrapeAmazonReviews(sendResponse) {
         if (starRating !== null || reviewText !== 'No review text') {
           reviews.push({
             reviewerName: reviewerName || 'Unknown',
+            reviewTitle: reviewTitle || 'No title',
             reviewDate: reviewDate || 'Unknown',
             starRating: starRating,
             reviewText: reviewText || 'No review text',
