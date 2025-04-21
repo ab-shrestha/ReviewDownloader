@@ -72,9 +72,25 @@ function scrapeAmazonReviews(sendResponse) {
 
         // Extract review title/heading with null checks
         let reviewTitle = 'No title';
-        const titleElement = reviewElement.querySelector('[data-hook="review-title"] span');
-        if (titleElement && titleElement.innerText) {
-          reviewTitle = titleElement.innerText.trim();
+        // Try multiple selectors to find the review title
+        const titleSelectors = [
+          '[data-hook="review-title"] span',  // Original selector
+          '[data-hook="review-title"]',       // Direct element
+          'h5 a[data-hook="review-title"] span', // Based on the provided HTML
+          'h5 a[data-hook="review-title"]'    // Alternative based on the provided HTML
+        ];
+        
+        for (const selector of titleSelectors) {
+          const titleElement = reviewElement.querySelector(selector);
+          if (titleElement && titleElement.innerText) {
+            reviewTitle = titleElement.innerText.trim();
+            console.log(`Found review title using selector "${selector}": "${reviewTitle}"`);
+            break;
+          }
+        }
+        
+        if (reviewTitle === 'No title') {
+          console.warn('Could not find review title with any selector. HTML structure might have changed.');
         }
 
         // Extract review date with null checks
