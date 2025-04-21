@@ -1090,6 +1090,7 @@ function scrapeEtsyReviews(sendResponse) {
  * @param {string} siteName - Name of the site (amazon, yelp, etsy)
  * @returns {Object} Success status and count of reviews
  */
+
 function downloadAsCSV(reviews, siteName) {
   if (!reviews || reviews.length === 0) {
     return {success: false, error: 'No reviews found'};
@@ -1099,6 +1100,12 @@ function downloadAsCSV(reviews, siteName) {
     // Create CSV header based on first review's properties
     const headers = Object.keys(reviews[0]);
     let csv = headers.join(',') + '\n';
+
+    // Send initial progress message
+    chrome.runtime.sendMessage({ action: 'updateProgress', progress: 0 });
+
+    // Calculate update frequency based on review count
+    const progressUpdate = Math.max(1, Math.floor(reviews.length / 10));
 
     // Add each review as a row
     reviews.forEach((review, index) => {
@@ -1135,13 +1142,6 @@ function downloadAsCSV(reviews, siteName) {
 
     // Use UTF-8 BOM to ensure Excel and other applications recognize the encoding
     const BOM = "\uFEFF";
-
-    // Send initial progress message
-    chrome.runtime.sendMessage({ action: 'updateProgress', progress: 0 });
-
-    // Calculate update frequency based on review count
-    const progressUpdate = Math.max(1, Math.floor(reviews.length / 10));
-    
     const csvWithBOM = BOM + csv;
 
     // Create a Blob with UTF-8 encoding specified
