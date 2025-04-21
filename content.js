@@ -72,8 +72,15 @@ function scrapeAmazonReviews(sendResponse) {
         const reviewText = reviewElement.querySelector('[data-hook="review-body"] span')?.innerText.trim() || 'No review text';
 
         // Extract verified purchase status if available
-        const verifiedElement = reviewElement.querySelector('[data-hook="avp-badge"]');
-        const isVerified = verifiedElement ? true : false;
+        if (!isVerified) {
+          const verifiedTextElements = reviewElement.querySelectorAll('span, div, a');
+          for (const element of verifiedTextElements) {
+            if (element.innerText && element.innerText.trim().includes('Verified')) {
+              isVerified = true;
+              break;
+            }
+          }
+        }
 
         // Add the extracted data to the reviews array
         reviews.push({
