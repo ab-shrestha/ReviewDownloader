@@ -73,48 +73,41 @@ function scrapeAmazonReviews(sendResponse) {
         // Extract review title/heading with null checks
         let reviewTitle = 'No title';
         
-        // First, try to find the review title element
+        // Find the review title element
         const titleElement = reviewElement.querySelector('h5 a[data-hook="review-title"]');
         
         if (titleElement) {
-          // Get all text nodes within the title element
-          const textNodes = Array.from(titleElement.childNodes)
-            .filter(node => node.nodeType === Node.TEXT_NODE || 
-                          (node.nodeType === Node.ELEMENT_NODE && 
-                           !node.classList.contains('a-icon') && 
-                           !node.classList.contains('a-letter-space')));
+          // Look for the span that contains the actual title text
+          // This is typically the last span in the title element
+          const spans = titleElement.querySelectorAll('span');
           
-          // Get the text from the last text node, which should be the actual title
-          if (textNodes.length > 0) {
-            const lastTextNode = textNodes[textNodes.length - 1];
-            const titleText = lastTextNode.textContent.trim();
+          // The actual title is usually in the last span that's not a star rating
+          for (let i = spans.length - 1; i >= 0; i--) {
+            const span = spans[i];
+            const text = span.textContent.trim();
             
-            // Filter out star rating text
-            if (titleText && !titleText.includes('out of 5 stars')) {
-              reviewTitle = titleText;
+            // Skip empty spans or spans with star rating text
+            if (text && !text.includes('out of 5 stars') && !span.classList.contains('a-icon-alt')) {
+              reviewTitle = text;
               console.log(`Found review title: "${reviewTitle}"`);
+              break;
             }
           }
         }
         
-        // Fallback to other selectors if the above method didn't work
+        // If we still don't have a title, try a more direct approach
         if (reviewTitle === 'No title') {
-          const titleSelectors = [
-            'h5 a[data-hook="review-title"] span:last-child',
-            '[data-hook="review-title"] span:last-child',
-            'h5 a[data-hook="review-title"] span:not(.a-icon-alt)'
-          ];
-          
-          for (const selector of titleSelectors) {
-            const element = reviewElement.querySelector(selector);
-            if (element && element.innerText) {
-              const text = element.innerText.trim();
-              // Filter out star rating text
-              if (text && !text.includes('out of 5 stars')) {
-                reviewTitle = text;
-                console.log(`Found review title using fallback selector "${selector}": "${reviewTitle}"`);
-                break;
-              }
+          // Try to find any span that might contain the title
+          const allSpans = reviewElement.querySelectorAll('span');
+          for (const span of allSpans) {
+            const text = span.textContent.trim();
+            // Look for a span with a reasonable title length (not too short, not too long)
+            if (text && text.length > 2 && text.length < 100 && 
+                !text.includes('out of 5 stars') && 
+                !span.classList.contains('a-icon-alt')) {
+              reviewTitle = text;
+              console.log(`Found review title using fallback: "${reviewTitle}"`);
+              break;
             }
           }
         }
