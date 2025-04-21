@@ -21,7 +21,7 @@ Get organized review data from any supported platform in seconds!
 Install this extension locally and use it in Google Chrome:
 
 1. **Download the code**
-   - Download this repository as a ZIP file (Click on the green <code> button above and select Download ZIP)
+   - Download this repository as a ZIP file (Click on the green 'Code' button above and select Download ZIP)
    - Extract the ZIP file to a folder on your computer
 
 2. **Load the extension in Chrome**
