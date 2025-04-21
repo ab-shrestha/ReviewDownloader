@@ -72,25 +72,55 @@ function scrapeAmazonReviews(sendResponse) {
 
         // Extract review title/heading with null checks
         let reviewTitle = 'No title';
-        // Try multiple selectors to find the review title
-        const titleSelectors = [
-          '[data-hook="review-title"] span',  // Original selector
-          '[data-hook="review-title"]',       // Direct element
-          'h5 a[data-hook="review-title"] span', // Based on the provided HTML
-          'h5 a[data-hook="review-title"]'    // Alternative based on the provided HTML
-        ];
         
-        for (const selector of titleSelectors) {
-          const titleElement = reviewElement.querySelector(selector);
-          if (titleElement && titleElement.innerText) {
-            reviewTitle = titleElement.innerText.trim();
-            console.log(`Found review title using selector "${selector}": "${reviewTitle}"`);
-            break;
+        // First, try to find the review title element
+        const titleElement = reviewElement.querySelector('h5 a[data-hook="review-title"]');
+        
+        if (titleElement) {
+          // Get all text nodes within the title element
+          const textNodes = Array.from(titleElement.childNodes)
+            .filter(node => node.nodeType === Node.TEXT_NODE || 
+                          (node.nodeType === Node.ELEMENT_NODE && 
+                           !node.classList.contains('a-icon') && 
+                           !node.classList.contains('a-letter-space')));
+          
+          // Get the text from the last text node, which should be the actual title
+          if (textNodes.length > 0) {
+            const lastTextNode = textNodes[textNodes.length - 1];
+            const titleText = lastTextNode.textContent.trim();
+            
+            // Filter out star rating text
+            if (titleText && !titleText.includes('out of 5 stars')) {
+              reviewTitle = titleText;
+              console.log(`Found review title: "${reviewTitle}"`);
+            }
+          }
+        }
+        
+        // Fallback to other selectors if the above method didn't work
+        if (reviewTitle === 'No title') {
+          const titleSelectors = [
+            'h5 a[data-hook="review-title"] span:last-child',
+            '[data-hook="review-title"] span:last-child',
+            'h5 a[data-hook="review-title"] span:not(.a-icon-alt)'
+          ];
+          
+          for (const selector of titleSelectors) {
+            const element = reviewElement.querySelector(selector);
+            if (element && element.innerText) {
+              const text = element.innerText.trim();
+              // Filter out star rating text
+              if (text && !text.includes('out of 5 stars')) {
+                reviewTitle = text;
+                console.log(`Found review title using fallback selector "${selector}": "${reviewTitle}"`);
+                break;
+              }
+            }
           }
         }
         
         if (reviewTitle === 'No title') {
-          console.warn('Could not find review title with any selector. HTML structure might have changed.');
+          console.warn('Could not find review title. HTML structure might have changed.');
         }
 
         // Extract review date with null checks
